@@ -34,7 +34,15 @@
 #include "driverlib/sysctl.h"
 #include "driverlib/uart.h"
 #include "utils/uartstdio.h"
+#include "driverlib/timer.h"
 
+#include "inc/hw_gpio.h"
+#include "inc/hw_ints.h"
+#include "driverlib/debug.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/timer.h"
+
+#include "inc/hw_ints.h"
 //*****************************************************************************
 //
 //! \addtogroup example_list
@@ -47,7 +55,12 @@
 //! 115,200, 8-N-1, is used to display messages from this application.
 //
 //*****************************************************************************
-
+uint32_t g_ui32Flags;
+uint32_t initialTime;
+uint32_t currentTime;
+uint32_t currentSpeed;
+uint32_t distanceSoFar;
+char str[100];
 //*****************************************************************************
 //
 // The error routine that is called if the driver library encounters an error.
@@ -65,8 +78,131 @@ __error__(char *pcFilename, uint32_t ui32Line)
 // Configure the UART and its pins.  This must be called before UARTprintf().
 //
 //*****************************************************************************
-void
-ConfigureUART(void)
+
+//*****************************************************************************
+//
+// The interrupt handler for the first timer interrupt.
+//
+//*****************************************************************************
+//void
+//Timer0IntHandler(void)
+//{
+//    char cOne, cTwo;
+//
+//    //
+//    // Clear the timer interrupt.
+//    //
+//    ROM_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+//
+//    //
+//    // Toggle the flag for the first timer.
+//    //
+//    HWREGBITW(&g_ui32Flags, 0) ^= 1;
+//
+//    //
+//    // Use the flags to Toggle the LED for this timer
+//    //
+//    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, g_ui32Flags << 1);
+//
+//    //
+//    // Update the interrupt status on the display.
+//    //
+//    ROM_IntMasterDisable();
+//    cOne = HWREGBITW(&g_ui32Flags, 0) ? '1' : '0';
+//    cTwo = HWREGBITW(&g_ui32Flags, 1) ? '1' : '0';
+//   // UARTprintf("\rT1: %c  T2: %c", cOne, cTwo);
+//    ROM_IntMasterEnable();
+//}
+
+//*****************************************************************************
+//
+// The interrupt handler for the second timer interrupt.
+//
+//*****************************************************************************
+//void
+//Timer1IntHandler(void)
+//{
+//    char cOne, cTwo;
+//
+//    //
+//    // Clear the timer interrupt.
+//    //
+//    ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+//
+//    //
+//    // Toggle the flag for the second timer.
+//    //
+//    HWREGBITW(&g_ui32Flags, 1) ^= 1;
+//
+//    //
+//    // Use the flags to Toggle the LED for this timer
+//    //
+//    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, g_ui32Flags << 1);
+//
+//    //
+//    // Update the interrupt status on the display.
+//    //
+//    ROM_IntMasterDisable();
+//    cOne = HWREGBITW(&g_ui32Flags, 0) ? '1' : '0';
+//    cTwo = HWREGBITW(&g_ui32Flags, 1) ? '1' : '0';
+// //   UARTprintf("\rT1: %c  T2: %c", cOne, cTwo);
+//    ROM_IntMasterEnable();
+//}
+uint8* integer_to_string (sint32 number,uint8* str,uint8 base)
+
+{
+    // index for length
+
+    uint8 i = 0;
+    uint8 isNegative = 0;
+
+    // Handle 0 explicitely
+
+    if (number == 0)
+    {
+        str[i++] = '0';
+        str[i] = '\0';  // the end of the string
+        return str;
+    }
+
+    // negative numbers are handled only with
+    // base 10. Otherwise numbers are considered unsigned
+
+    if (number <0 && base ==10)
+    {
+        isNegative = 1;
+        number = -number; // to get the absolute value of the number
+    }
+
+    while (number != 0)
+    {
+
+        uint8 remainder = number % base ;
+        if (remainder > 9)
+        {
+            str[i++] = (remainder-10) + 'A';  // for hexa-decimal only
+
+        }
+        else
+        {
+            str[i++] = remainder + '0';
+        }
+        number=number/base;
+    }
+
+    if (isNegative)
+    {
+        str[i++] = '-';
+    }
+
+    str[i] = '\0';  // the end of the string
+
+    reverse(str,i); // where i  index for the length of the string
+
+    return str;
+}
+
+void ConfigureUART(void)
 {
     //
     // Enable the GPIO Peripheral used by the UART.
@@ -96,8 +232,7 @@ ConfigureUART(void)
     UARTStdioConfig(0, 115200, 16000000);
 }
 
-void
-ConfigureUART1(void)
+void ConfigureUART1(void)
 {
     //
     // Enable the GPIO Peripheral used by the UART.
@@ -132,10 +267,20 @@ ConfigureUART1(void)
 // Print "Hello World!" to the UART on the evaluation board.
 //
 //*****************************************************************************
-int
-main(void)
+int main(void)
 {
-    //volatile uint32_t ui32Loop;
+
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF));
+
+    HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;
+    HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= 0x01;
+    HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;
+
+    //GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4);
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4,
+                     GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
 
     //
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -148,7 +293,13 @@ main(void)
     // Set the clocking to run directly from the crystal.
     //
     ROM_SysCtlClockSet(SYSCTL_SYSDIV_4 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ |
-                       SYSCTL_OSC_MAIN);
+    SYSCTL_OSC_MAIN);
+
+    //
+    // Set the clocking to run directly from the crystal.
+    //
+//    ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+//                       SYSCTL_XTAL_16MHZ);
 
     //
     // Enable the GPIO port that is used for the on-board LED.
@@ -158,25 +309,57 @@ main(void)
     //
     // Enable the GPIO pins for the LED (PF2 & PF3).
     //
-    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2);
+    ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_1);
 
+
+
+    //SysCtlDelay(SysCtlClockGet() / 10 / 3);
     //
     // Initialize the UART.
     //
     ConfigureUART1();
     ConfigureUART();
 
-    char c[100];
-    UARTprintf("zx");
-    while(1)
+    // receiving initial time
+    char c;
+    c = UARTCharGet(UART1_BASE);
+    initialTime = c;
+
+    while (1)
     {
+        if (GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4) == 0)
+        {
+            while (GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_4) == 0);
 
-//        //SysCtlDelay(SysCtlClockGet() / 10 / 3);
-        c[0]=UARTCharGet(UART1_BASE);
-        c[0]+='0';
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+            UARTCharPut(UART1_BASE, 1);
 
-        UARTprintf(c);
+            c = UARTCharGet(UART1_BASE);
+            currentTime = c;
+
+
+            c = UARTCharGet(UART1_BASE);
+            currentSpeed = c;
+
+            distanceSoFar += (initialTime - currentTime)*currentSpeed;
+            initialTime = currentTime;
+
+            UARTprintf("\n");
+            UARTprintf("Current Time");
+            str = integer_to_string(currentTime, str, 10);
+            UARTprintf(str);
+            UARTprintf("\n");
+            UARTprintf("Current Speed");
+            str = integer_to_string(currentSpeed, str, 10);
+            UARTprintf(str);
+
+            UARTprintf("\n");
+            UARTprintf("Distance so far");
+            str = integer_to_string(distanceSoFar, str, 10);
+            UARTprintf(str);
+
+        }
+
+
 
 
     }
