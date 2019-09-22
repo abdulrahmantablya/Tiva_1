@@ -83,67 +83,76 @@ __error__(char *pcFilename, uint32_t ui32Line)
 //
 //*****************************************************************************
 
-uint32_t g_ui32Flags;
+ volatile uint32_t g_ui32Flags;
+ volatile uint32_t g_secondsCounter;
+volatile uint32_t  TimeRightNow;
 
 
-void
-Timer1IntHandler(void)
-{
-    char cOne, cTwo;
-
-    //
-    // Clear the timer interrupt.
-    //
-    ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-
-    //
-    // Toggle the flag for the second timer.
-    //
-    HWREGBITW(&g_ui32Flags, 1) ^= 1;
-
-    //
-    // Use the flags to Toggle the LED for this timer
-    //
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, g_ui32Flags << 1);
-
-    //
-    // Update the interrupt status on the display.
-    //
-    ROM_IntMasterDisable();
-    cOne = HWREGBITW(&g_ui32Flags, 0) ? '1' : '0';
-    cTwo = HWREGBITW(&g_ui32Flags, 1) ? '1' : '0';
- //   UARTprintf("\rT1: %c  T2: %c", cOne, cTwo);
-    ROM_IntMasterEnable();
-}
+volatile int32_t SpeedRequestFromMicroController_2=0;
 
 void
 Timer0IntHandler(void)
 {
     char cOne, cTwo;
-
     //
     // Clear the timer interrupt.
     //
     ROM_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-    //
-    // Toggle the flag for the first timer.
-    //
-    HWREGBITW(&g_ui32Flags, 0) ^= 1;
 
-    //
-    // Use the flags to Toggle the LED for this timer
-    //
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, g_ui32Flags << 1);
+    //TimeRightNow++;
+    g_secondsCounter++;
+    if(g_secondsCounter>=60){
+        g_secondsCounter=0;
+        TimeRightNow++;
+    }
 
-    //
-    // Update the interrupt status on the display.
-    //
     ROM_IntMasterDisable();
     cOne = HWREGBITW(&g_ui32Flags, 0) ? '1' : '0';
     cTwo = HWREGBITW(&g_ui32Flags, 1) ? '1' : '0';
-   // UARTprintf("\rT1: %c  T2: %c", cOne, cTwo);
     ROM_IntMasterEnable();
+}
+
+//void Timer1IntHandler(void)
+//{
+//    char cOne, cTwo;
+//
+//
+//    //
+//    // Clear the timer interrupt.
+//    //
+//    ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+//    //TimeRightNow++;
+//    g_secondsCounter++;
+//    if(g_secondsCounter>=60){
+//        g_secondsCounter=0;
+//        TimeRightNow++;
+//    }
+//
+//    ROM_IntMasterDisable();
+// //   UARTprintf("\rT1: %c  T2: %c", cOne, cTwo);
+//    ROM_IntMasterEnable();
+//}
+
+
+void blinkyy(void)
+{
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
+
+                                   //
+                                   // Delay for a bit.
+                                   //
+                                   SysCtlDelay(SysCtlClockGet() / 10 / 3);
+
+                                   //
+                                   // Turn off the BLUE LED.
+                                   //
+                                   GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0);
+
+                                   //
+                                   // Delay for a bit.
+                                   //
+                                   SysCtlDelay(SysCtlClockGet() / 10 / 3);
 }
 
 void
@@ -221,13 +230,16 @@ ConfigureUART_0(void)
 
 void GetAndSendInitialTime(void)
 {
-    TimeRightNow=  ( UARTCharGet(UART0_BASE) - '0' ) ;
+    TimeRightNow=  ( UARTCharGet(UART0_BASE) - (48) ) ;
 
 
-    TimeRightNow = ( TimeRightNow*10 ) + ( UARTCharGet(UART0_BASE) -'0') ;
+
+    TimeRightNow = ( (TimeRightNow) * (10) ) + ( UARTCharGet(UART0_BASE) -(48) ) ;
 
 
-    UARTCharPut(UART1_BASE,TimeRightNow);
+    UARTCharPut(UART1_BASE,(TimeRightNow));
+
+
 }
 
 void Timer0AndTimer1_Init(void)
@@ -237,7 +249,7 @@ void Timer0AndTimer1_Init(void)
      // Enable the peripherals used by this example.
      //
      ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-     ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+     //ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
 
      //
      // Enable processor interrupts.
@@ -254,46 +266,58 @@ void Timer0AndTimer1_Init(void)
      // Configure the two 32-bit periodic timers.
      //
      ROM_TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-     ROM_TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
+   // ROM_TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC);
      ROM_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet());
-     ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet() / 2);
+    // ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet() / 2);
 
      //
      // Setup the interrupts for the timer timeouts.
      //
      ROM_IntEnable(INT_TIMER0A);
-     ROM_IntEnable(INT_TIMER1A);
+    // ROM_IntEnable(INT_TIMER1A);
      ROM_TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-     ROM_TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+     //ROM_TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
  //
  //
  //    //
  //    // Enable the timers.
  //    //
      ROM_TimerEnable(TIMER0_BASE, TIMER_A);
-     ROM_TimerEnable(TIMER1_BASE, TIMER_A);
+     //ROM_TimerEnable(TIMER1_BASE, TIMER_A);
 
+}
+
+void EnableSW1AndSW2(void)
+{
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF));
+
+    HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;
+    HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= 0x01;
+    HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;
+
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4);
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
 }
 
 int
 main(void)
 {
 
-    Timer0AndTimer1_Init();
 
 
-        SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-        while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF));
 
-        HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;
-        HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= 0x01;
-        HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;
+        int32_t SpeedRightNow=20;
 
-        GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
-        GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4);
-        GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_4, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
+
+
+        Timer0AndTimer1_Init();
+
+        EnableSW1AndSW2();
+
     //
-    ROM_FPULazyStackingEnable();
+        ROM_FPULazyStackingEnable();
 
     //
     // Set the clocking to run directly from the crystal.
@@ -320,7 +344,9 @@ main(void)
 
     ConfigureUART_0();
 
-    int32_t  TimeRightNow=0;
+
+
+
 
 
 
@@ -328,14 +354,28 @@ main(void)
     GetAndSendInitialTime();
 
 
+
+
     while(1)
     {
 
-        if( (GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4) == 0)  &&  (GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_0) == 0) )
-        {
 
+
+
+        SpeedRequestFromMicroController_2 = UARTCharGet(UART1_BASE);
+
+
+
+
+
+        if( SpeedRequestFromMicroController_2 )
+        {
+            UARTCharPut(UART1_BASE,TimeRightNow);
+            UARTCharPut(UART1_BASE,SpeedRightNow);
+            blinkyy();
 
         }
+
 
 
 
@@ -343,9 +383,7 @@ main(void)
         {
             while( GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4) == 0 );
 
-            UARTCharPut(UART1_BASE,1);
-
-
+            SpeedRightNow++;
 
             GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
 
@@ -369,7 +407,7 @@ main(void)
         {
             while( GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_0) == 0 );
 
-                        UARTCharPut(UART1_BASE,5);
+                        SpeedRightNow--;
 
                         GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, GPIO_PIN_2);
 
@@ -392,6 +430,8 @@ main(void)
         {
 
         }
+
+
 
 
     }
